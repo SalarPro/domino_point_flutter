@@ -21,6 +21,8 @@ class _MainScreenState extends State<MainScreen> {
     SharedPreferences.getInstance().then((value) {
       player[0] = value.getInt("player0") ?? 0;
       player[1] = value.getInt("player1") ?? 0;
+      history = fromJsonString(value.getStringList("history") ?? []);
+      future = fromJsonString(value.getStringList("future") ?? []);
       setState(() {});
     });
   }
@@ -41,21 +43,14 @@ class _MainScreenState extends State<MainScreen> {
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Opacity(
-              opacity: history.length > 0 ? 1 : 0.5,
+              opacity: history.isNotEmpty ? 1 : 0.5,
               child: IconButton(
                 onPressed: () {
                   HapticFeedback.mediumImpact();
                   SharedPreferences.getInstance().then(
                     (value) {
                       // undo
-                      if (history.length > 0) {
-                        var last = history.last;
-                        history.removeLast();
-                        future.add(last);
-                        player[last.key] -= last.value;
-                        value.setInt("player${last.key}", last.value);
-                        setState(() {});
-                      }
+                      undo();
                     },
                   );
                 },
@@ -70,32 +65,32 @@ class _MainScreenState extends State<MainScreen> {
                     showDialog(
                       context: context,
                       builder: (context) => AlertDialog.adaptive(
-                        content: Text("Are you sure?"),
-                        title: Text("Reset"),
+                        content: const Text("Are you sure?"),
+                        title: const Text("Reset"),
                         actions: [
                           TextButton(
                             onPressed: () {
                               HapticFeedback.mediumImpact();
                               Navigator.pop(context);
                             },
-                            child: Text("Cancel"),
+                            child: const Text("Cancel"),
                           ),
                           TextButton(
                             onPressed: () {
                               HapticFeedback.mediumImpact();
-                              value.setInt("player0", 0);
-                              value.setInt("player1", 0);
+
                               setState(
                                 () {
                                   player[0] = 0;
                                   player[1] = 0;
                                   history.clear();
                                   future.clear();
+                                  savePoints();
                                 },
                               );
                               Navigator.pop(context);
                             },
-                            child: Text("Reset"),
+                            child: const Text("Reset"),
                           ),
                         ],
                       ),
@@ -103,28 +98,20 @@ class _MainScreenState extends State<MainScreen> {
                   },
                 );
               },
-              icon: Icon(Icons.refresh),
+              icon: const Icon(Icons.refresh),
             ),
             Opacity(
-              opacity: future.length > 0 ? 1 : 0.5,
+              opacity: future.isNotEmpty ? 1 : 0.5,
               child: IconButton(
                 onPressed: () {
                   HapticFeedback.mediumImpact();
                   SharedPreferences.getInstance().then(
                     (value) {
-                      // redo
-                      if (future.length > 0) {
-                        var last = future.last;
-                        future.removeLast();
-                        history.add(last);
-                        player[last.key] += last.value;
-                        value.setInt("player${last.key}", last.value);
-                        setState(() {});
-                      }
+                      redo();
                     },
                   );
                 },
-                icon: Icon(Icons.redo),
+                icon: const Icon(Icons.redo),
               ),
             ),
           ],
@@ -136,7 +123,16 @@ class _MainScreenState extends State<MainScreen> {
             children: [
               Expanded(
                   child: Container(
-                color: Colors.red,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Color(0xffFF416C),
+                      Color(0xffFF4B2B),
+                    ],
+                  ),
+                ),
                 child: Column(
                   children: [
                     Expanded(child: SingleChildScrollView(child: pointCell(0))),
@@ -146,7 +142,16 @@ class _MainScreenState extends State<MainScreen> {
               )),
               Expanded(
                   child: Container(
-                color: Colors.blue,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Color(0xff8E2DE2),
+                      Color(0xff4A00E0),
+                    ],
+                  ),
+                ),
                 child: Column(
                   children: [
                     Expanded(child: SingleChildScrollView(child: pointCell(1))),
@@ -182,8 +187,8 @@ class _MainScreenState extends State<MainScreen> {
                             border: Border.all(color: Colors.white, width: 2),
                             borderRadius: BorderRadius.circular(10),
                           ),
-                          padding:
-                              EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
                           child: Text(player[0].toString(),
                               style: SPColors.lightTextColor20.copyWith(
                                 fontWeight: FontWeight.bold,
@@ -203,8 +208,8 @@ class _MainScreenState extends State<MainScreen> {
                             border: Border.all(color: Colors.white, width: 2),
                             borderRadius: BorderRadius.circular(10),
                           ),
-                          padding:
-                              EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
                           child: Text(player[1].toString().toString(),
                               textAlign: TextAlign.right,
                               style: SPColors.lightTextColor20.copyWith(
@@ -222,8 +227,8 @@ class _MainScreenState extends State<MainScreen> {
                           border: Border.all(color: Colors.white, width: 2),
                           borderRadius: BorderRadius.circular(10),
                         ),
-                        padding:
-                            EdgeInsets.symmetric(horizontal: 6, vertical: 6),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 6, vertical: 6),
                         child: Center(
                           child: Text((player[0] - player[1]).abs().toString(),
                               style: SPColors.lightTextColor24.copyWith(
@@ -387,8 +392,8 @@ class _MainScreenState extends State<MainScreen> {
     double btnHeight = 50;
     return SafeArea(
       child: Container(
-        margin: EdgeInsets.symmetric(horizontal: 10),
-        decoration: BoxDecoration(
+        margin: const EdgeInsets.symmetric(horizontal: 10),
+        decoration: const BoxDecoration(
           color: Colors.white,
         ),
         child: Column(
@@ -426,13 +431,12 @@ class _MainScreenState extends State<MainScreen> {
           player[playerIndex] += value;
           history.add(MapEntry(playerIndex, value));
           playerLastScore[playerIndex] = value;
-          SharedPreferences.getInstance().then((value) {
-            value.setInt("player$playerIndex", player[playerIndex]);
-          });
+          future.clear();
+          savePoints();
         });
       },
       child: Container(
-        margin: EdgeInsets.all(5),
+        margin: const EdgeInsets.all(5),
         height: btnHeight,
         color: Colors.amber,
         child: Center(
@@ -446,5 +450,51 @@ class _MainScreenState extends State<MainScreen> {
         )),
       ),
     ));
+  }
+
+  void savePoints() {
+    SharedPreferences.getInstance().then((value) {
+      value.setInt("player0", player[0]);
+      value.setInt("player1", player[1]);
+      value.setStringList("history", toJsonString(history));
+      value.setStringList("future", toJsonString(future));
+      debugPrint('saved');
+      Future.microtask(() => setState(() {}));
+    });
+  }
+
+  void redo() {
+    if (future.isNotEmpty) {
+      var last = future.last;
+      future.removeLast();
+      history.add(last);
+      player[last.key] += last.value;
+    }
+    savePoints();
+    setState(() {});
+  }
+
+  void undo() {
+    if (history.isNotEmpty) {
+      var last = history.last;
+      history.removeLast();
+      future.add(last);
+      player[last.key] -= last.value;
+    }
+    savePoints();
+    setState(() {});
+  }
+
+  List<String> toJsonString(List<MapEntry<int, int>> futures) {
+    // List<MapEntry<int, int>> to json string
+    return futures.map((e) => "${e.key}:${e.value}").toList();
+  }
+
+  List<MapEntry<int, int>> fromJsonString(List<String> jsonStrings) {
+    // json string to List<MapEntry<int, int>>
+    return jsonStrings.map((e) {
+      var split = e.split(":");
+      return MapEntry(int.parse(split[0]), int.parse(split[1]));
+    }).toList();
   }
 }
